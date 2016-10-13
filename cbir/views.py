@@ -2,7 +2,7 @@ from __future__ import print_function
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from django.http import JsonResponse
-import numpy as numpy
+import numpy as np
 import urllib
 import json
 import cv2
@@ -29,7 +29,10 @@ def detect(request):
 
 	if request.method == "POST":
 
-		image = _grab_image("/Users/marchampson/Desktop/cbir_api/cbir/queries/9.jpg")
+		if request.FILES.get("image", None) is not None:
+			image = _grab_image(stream=request.FILES["image"])
+
+		#image = _grab_image("/Users/marchampson/Desktop/cbir_api/cbir/queries/9.jpg")
 
 		detector = cv2.KAZE_create()
 		descriptor = Kaze()
@@ -51,10 +54,14 @@ def detect(request):
         hist = bovw.describe(descs).tocoo()
 
         # connect to redis and perform the search
+        '''
+        What's the best way to calculate the maxCandidates? Should it be the full
+        amount of images in repository or ?
+        '''
         redisDB = Redis(host="localhost", port=6379, db=0)
         searcher = Searcher(redisDB, "/Users/marchampson/Desktop/cbir_api/cbir/output/bovw.hdf5",
         	"/Users/marchampson/Desktop/cbir_api/cbir/output/features.hdf5", idf=idf, distanceMetric=distanceMetric)
-        sr = searcher.search(hist, numResults=1, maxCandidates=2)
+        sr = searcher.search(hist, numResults=1, maxCandidates=10)
         print("[INFO] search took: {:.2f}s".format(sr.search_time))
 
         for (i, (score, resultID, resultIdx)) in enumerate(sr.results):
@@ -62,7 +69,7 @@ def detect(request):
 
         searcher.finish()
 
-        data.update({"results": resultID, "success": True})
+        data.update({"results": resultID, "time": sr.search_time, "score": score, "success": True})
 
 	return JsonResponse(data)
 
